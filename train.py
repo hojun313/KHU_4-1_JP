@@ -115,9 +115,10 @@ if original_in_channels != new_in_channels:
             padding=unet.conv_in.padding,
             bias=unet.conv_in.bias is not None
         )
-        # 기존 가중치를 앞쪽 절반(원본 4채널에 해당)에 복사합니다.
-        # 새롭게 추가된 4채널은 기본값으로 초기화됩니다. (일반적으로 충분함)
+        torch.nn.init.zeros_(new_conv_in.weight)
+
         new_conv_in.weight.data[:, :original_in_channels, :, :].copy_(original_weight.data)
+        
         if original_bias is not None:
             new_conv_in.bias.data.copy_(original_bias.data)
 
