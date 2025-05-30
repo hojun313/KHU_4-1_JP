@@ -375,6 +375,8 @@ def select_checkpoint_interactive(base_dir):
 if __name__ == "__main__":
     print("스크립트 실행 시작")
 
+    ema = None
+
     # --- 커맨드 라인 인자 파서 설정 ---
     parser = argparse.ArgumentParser(description="Train Heightmap Diffusion Model")
 
@@ -605,8 +607,11 @@ if __name__ == "__main__":
                         unet.parameters(), lr=learning_rate, betas=adamw_betas, weight_decay=adamw_weight_decay
                     )
                     ema = ExponentialMovingAverage(unet.parameters(), decay=0.995) # decay 값은 0.995 ~ 0.999 사이를 주로 사용
-                    
+
                     print("학습 재개를 위해 Optimizer 초기화 완료.")
+
+                    ema = ExponentialMovingAverage(unet.parameters(), decay=0.995)
+                    print("학습 재개를 위해 EMA 객체 생성 완료.")
 
                 if lr_scheduler is None: 
                     num_update_steps_per_epoch = len(dataloader)
@@ -706,6 +711,9 @@ if __name__ == "__main__":
                         unet.parameters(), lr=learning_rate, betas=adamw_betas, weight_decay=adamw_weight_decay
                     )
                     print("Optimizer 초기화 완료.")
+
+                    ema = ExponentialMovingAverage(unet.parameters(), decay=0.995)
+                    print("EMA 객체 생성 완료.")
 
                 if lr_scheduler is None: 
                     num_update_steps_per_epoch = len(dataloader)
@@ -819,6 +827,8 @@ if __name__ == "__main__":
                         
                         lr_scheduler.step()
                         optimizer.zero_grad()
+                        if ema is not None:
+                            ema.update()
                         
                         global_step += 1
                         
@@ -841,6 +851,8 @@ if __name__ == "__main__":
                             if lr_scheduler is not None:
                                 lr_scheduler_save_path = os.path.join(checkpoint_dir, "lr_scheduler.pt")
                                 torch.save(lr_scheduler.state_dict(), lr_scheduler_save_path)
+                            if ema is not None:
+                                torch.save(ema.state_dict(), os.path.join(checkpoint_dir, "ema.pt"))
 
                             step_save_path = os.path.join(checkpoint_dir, "global_step.txt")
                             with open(step_save_path, "w") as f:
@@ -883,6 +895,9 @@ if __name__ == "__main__":
                 if not os.path.exists(input_image_for_generation):
                     print(f"오류: 추론할 입력 이미지 '{input_image_for_generation}'를 찾을 수 없습니다.")
                 else:
+                    print("추론을 위해 EMA 가중치를 모델에 적용합니다...")
+                    ema.copy_to(unet.parameters()) # 1. EMA 가중치를 UNet으로 복사
+
                     generate_heightmap_image(
                         input_image_path=input_image_for_generation, 
                         vae=vae,

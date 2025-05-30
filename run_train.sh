@@ -147,9 +147,9 @@ echo "Starting Python training script (trainGPU.py)..."
 PYTHON_ARGS=(
     --data_root "$LOCAL_DATA_FOR_PYTHON_SCRIPT" \
     --model_tag "$MODEL_TAG_ARG" \
-    --batch_size 32 \
+    --batch_size 16 \
     --num_workers 8 \
-    --num_epochs 100 \
+    --num_epochs 200 \
     --learning_rate 1e-5 \
     --output_dir "/data/hojun313/JP/heightmap_diffusion_checkpoints" \
     --image_height 256 \
