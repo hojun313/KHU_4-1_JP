@@ -213,8 +213,8 @@ def generate_heightmap_image(input_image_path, vae, unet, scheduler, device, tar
     latent_shape = input_image_latent.shape # 입력 이미지 Latent와 동일한 형태 사용
     # device 문자열을 torch.device 객체로 변환하여 사용
     torch_device_obj = torch.device(device)
-    generator = torch.Generator(device=torch_device_obj).manual_seed(42) # 재현 가능한 결과 생성을 위한 시드 고정 (선택 사항)
-    initial_noise = torch.randn(latent_shape, generator=generator, device=torch_device_obj) # 초기 노이즈 생성 (4채널)
+    # generator = torch.Generator(device=torch_device_obj).manual_seed(42) # 재현 가능한 결과 생성을 위한 시드 고정 (선택 사항)
+    initial_noise = torch.randn(latent_shape, device=torch_device_obj) # 초기 노이즈 생성 (4채널)
 
 
     # 4. Scheduler에 노이즈 제거 단계 설정
