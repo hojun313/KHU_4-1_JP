@@ -20,6 +20,8 @@ import sys # 종료 시 메시지 출력을 위해
 
 import argparse
 
+from torch_ema import ExponentialMovingAverage
+
 
 from dataset import GelSightDataset # dataset.py 파일이 동일 경로에 있다고 가정
 
@@ -602,6 +604,8 @@ if __name__ == "__main__":
                     optimizer = optim.AdamW(
                         unet.parameters(), lr=learning_rate, betas=adamw_betas, weight_decay=adamw_weight_decay
                     )
+                    ema = ExponentialMovingAverage(unet.parameters(), decay=0.995) # decay 값은 0.995 ~ 0.999 사이를 주로 사용
+                    
                     print("학습 재개를 위해 Optimizer 초기화 완료.")
 
                 if lr_scheduler is None: 
@@ -802,10 +806,15 @@ if __name__ == "__main__":
 
                         if device == "cuda" and scaler is not None:
                             scaler.scale(loss).backward()
+
+                            scaler.unscale_(optimizer)
+                            torch.nn.utils.clip_grad_norm_(unet.parameters(), 1.0)
+
                             scaler.step(optimizer)
                             scaler.update()
                         else: # CPU 또는 AMP 미사용
                             loss.backward()
+                            torch.nn.utils.clip_grad_norm_(unet.parameters(), 1.0)
                             optimizer.step()
                         
                         lr_scheduler.step()
