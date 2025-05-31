@@ -6,6 +6,7 @@ from tqdm import tqdm
 import os
 import torchvision
 import argparse
+from torchvision import transforms
 
 from re_dataset import TextureHeightmapDataset 
 from re_model import create_model
@@ -93,11 +94,11 @@ def main(args):
             print(f"경고: 지정된 체크포인트 파일 '{args.load_model}'를 찾을 수 없습니다.")
 
     transform_texture = transforms.Compose([
-        transforms.Resize((IMG_SIZE, IMG_SIZE)), transforms.ToTensor(),
+        transforms.Resize((args.image_size, args.image_size)), transforms.ToTensor(),
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
     ])
     transform_heightmap = transforms.Compose([
-        transforms.Resize((IMG_SIZE, IMG_SIZE)), transforms.ToTensor(),
+        transforms.Resize((args.image_size, args.image_size)), transforms.ToTensor(),
         transforms.Normalize(mean=[0.5], std=[0.5])
     ])
 
@@ -139,6 +140,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_epochs", type=int, default=25, help="총 학습 에포크 수")
     parser.add_argument("--num_workers", type=int, default=4, help="DataLoader에서 사용할 CPU 워커 수")
     parser.add_argument("--save_interval", type=int, default=1, help="체크포인트를 저장할 에포크 주기")
-
+    parser.add_argument("--image_size", type=int, default=256, help="이미지 리사이즈 크기")
+    
+    
     args, unknown = parser.parse_known_args()
     main(args)

@@ -79,15 +79,16 @@ echo "Current working directory: $(pwd)"
 
 echo "Starting Python training script (re_train.py)..."
 python re_train.py \
-    --data_root "$LOCAL_DATA_FOR_PYTHON_SCRIPT" \
+    --data_root "$LOCAL_DATA_FOR_PYTHON_SCRIPT/heightmap_dataset" \
     --output_dir "/data/hojun313/JP/training_outputs" \
     --model_tag "$MODEL_TAG_ARG" \
     --batch_size 32 \
     --num_workers 8 \
-    --num_epochs 100 \
+    --num_epochs 1 \
     --learning_rate 1e-4 \
     --encoder "resnet34" \
-    --save_interval 5
+    --save_interval 5 \
+    --image_size 256 \
     # --load_model "/data/hojun313/JP/training_outputs/PREVIOUS_TAG/checkpoints/checkpoint_epoch_10.pth.tar" \
 
 PYTHON_EXIT_CODE=$?
