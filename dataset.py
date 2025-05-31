@@ -13,38 +13,24 @@ logging.basicConfig(filename='dataset_errors.log', level=logging.ERROR,
 
 
 class GelSightDataset(Dataset):
-    def __init__(self, data_root, target_size=(256, 256), augment=False, excluded_materials=None):
+    def __init__(self, data_root, target_size=(256, 256)):
         self.data_root = data_root
         self.target_size = target_size
-        # self.augment = False # 증강을 사용하지 않으므로 False로 고정하거나, 인자 자체를 무시
-        
-        self.excluded_materials = excluded_materials if excluded_materials is not None else []
-        
-        if self.excluded_materials:
-            print(f"알림: 다음 재질들이 학습에서 제외되도록 설정되었습니다: {', '.join(self.excluded_materials)}")
-            print(f"제외된 재질 개수: {len(self.excluded_materials)}")
-        else:
-            print("알림: 제외되도록 설정된 재질이 없습니다. 모든 재질을 사용합니다.")
 
         self.image_pairs = self._build_image_pairs()
 
-        # 입력 이미지(흑백 원본 -> 3채널 RGB 확장 후 정규화)를 위한 변환 정의
         self.transform_input_pil_to_tensor = T.Compose([
             T.Resize(self.target_size), # PIL 이미지를 최종 target_size로 리사이즈
             T.ToTensor(),
             T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
         ])
 
-        # 목표 이미지를 위한 transform (흑백 하이트맵)
         self.transform_output_pil_to_tensor = T.Compose([
             T.Resize(self.target_size), # PIL 이미지를 최종 target_size로 리사이즈
             T.ToTensor(),
             T.Normalize(mean=[0.5], std=[0.5])
         ])
         
-        # 증강 및 중앙 잘라내기 관련 print 문 제거 또는 수정
-        print(f"이미지가 최종적으로 {self.target_size} 크기로 리사이즈됩니다. (중앙 잘라내기 및 데이터 증강 없음)")
-
 
     def _get_material_name_from_path(self, folder_path):
         return os.path.basename(folder_path)
@@ -60,11 +46,7 @@ class GelSightDataset(Dataset):
             if material_name not in self.excluded_materials:
                 material_folders_to_use.append(material_path)
             else:
-                # 제외되는 재질에 대한 print 문은 __init__에서 이미 처리하므로 여기서는 생략 가능
                 actually_excluded_count +=1
-        
-        if self.excluded_materials:
-             print(f"확인: 전달된 제외 목록에 따라 총 {actually_excluded_count}개의 재질 폴더가 _build_image_pairs에서 필터링(제외)되었습니다.")
 
         excluded_numbers_suffix = [f"_{i:05d}" for i in range(0, 16)]
 
