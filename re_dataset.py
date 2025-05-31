@@ -59,49 +59,81 @@ class TextureHeightmapDataset(Dataset):
 
     def _build_image_pairs(self):
         image_pairs = []
-        material_folders = [
-            d for d in glob.glob(os.path.join(self.data_root, '*')) if os.path.isdir(d)
-        ]
         
-        for material_folder_path in material_folders: 
-            input_files_pattern = os.path.join(material_folder_path, 'input_*')
-            potential_input_files = [f for ext in self.supported_extensions 
-                                     for f in glob.glob(input_files_pattern + ext)]
+        # 1. data_root에서 모든 아이템 찾기
+        items_in_data_root_pattern = os.path.join(self.data_root, '*')
+        all_items_in_data_root = glob.glob(items_in_data_root_pattern)
 
-            if not potential_input_files:
-                print(f"정보: 재질 폴더 '{material_folder_path}'에서 'input_*' 파일을 찾을 수 없어 건너<0xEB><0><0x88>니다.")
+        material_folders = []
+        for item_path in all_items_in_data_root:
+            is_dir = os.path.isdir(item_path)
+            if is_dir:
+                material_folders.append(item_path)
+
+        if not material_folders:
+            return [] # 빈 리스트 반환
+
+        for material_folder_path in material_folders: 
+            
+            # input_*.ext 파일 찾기
+            input_files_found_for_this_material = []
+            for ext_idx, ext in enumerate(self.supported_extensions):
+                input_files_pattern = os.path.join(material_folder_path, f'input_*{ext}')
+                potential_input_files_for_ext = glob.glob(input_files_pattern)
+                if potential_input_files_for_ext:
+                    input_files_found_for_this_material.extend(potential_input_files_for_ext)
+                # else:
+                #     print(f"[DEBUG re_dataset.py]    L 확장자 '{ext}'에 대해 찾은 input 파일 없음.")
+
+            if not input_files_found_for_this_material:
                 continue
             
-            if len(potential_input_files) > 1:
-                print(f"경고: 재질 폴더 '{material_folder_path}'에 여러 'input_*' 파일이 있습니다. 첫 번째 파일 '{potential_input_files[0]}'을 사용합니다.")
-            input_file_path = potential_input_files[0]
+            input_file_path = input_files_found_for_this_material[0]
             
             output_base_folder = os.path.join(material_folder_path, "output")
 
-            if os.path.isdir(output_base_folder):
-                condition_folders = [
-                    d for d in glob.glob(os.path.join(output_base_folder, '*')) if os.path.isdir(d)
-                ]
+            if not os.path.isdir(output_base_folder):
+                continue
+
+            # 'output' 폴더 내의 모든 하위 폴더 (조건 폴더) 순회
+            condition_folder_pattern = os.path.join(output_base_folder, '*')
+            all_items_in_output = glob.glob(condition_folder_pattern)
+            
+            condition_folders = []
+            for item_path in all_items_in_output:
+                is_dir = os.path.isdir(item_path)
+                if is_dir:
+                    condition_folders.append(item_path)
                 
-                for condition_folder_path in condition_folders:
-                    heightmaps_folder = os.path.join(condition_folder_path, "heightmaps")
-                    if os.path.isdir(heightmaps_folder):
-                        found_heightmap_files_pattern = os.path.join(heightmaps_folder, '*')
-                        found_heightmap_files = [f for ext in self.supported_extensions
-                                                 for f in glob.glob(found_heightmap_files_pattern + ext)]
-                        
-                        for heightmap_file_path in found_heightmap_files:
-                            heightmap_filename_no_ext = os.path.splitext(os.path.basename(heightmap_file_path))[0]
-                            
-                            should_exclude = False
-                            if self.excluded_heightmap_suffixes: 
-                                for suffix in self.excluded_heightmap_suffixes:
-                                    if heightmap_filename_no_ext.endswith(suffix):
-                                        should_exclude = True
-                                        break
-                            
-                            if not should_exclude:
-                                image_pairs.append((input_file_path, heightmap_file_path))
+            for condition_folder_path in condition_folders:
+                heightmaps_folder = os.path.join(condition_folder_path, "heightmaps")
+
+                if not os.path.isdir(heightmaps_folder):
+                    continue
+                
+                found_heightmap_files_for_condition = []
+                for ext_idx, ext in enumerate(self.supported_extensions):
+                    heightmap_files_pattern = os.path.join(heightmaps_folder, f'*{ext}')
+                    # print(f"[DEBUG re_dataset.py]       L heightmap 파일 탐색 패턴 (확장자 {ext_idx+1}/{len(self.supported_extensions)} - '{ext}'): '{heightmap_files_pattern}'")
+                    potential_heightmap_files_for_ext = glob.glob(heightmap_files_pattern)
+                    if potential_heightmap_files_for_ext:
+                        # print(f"[DEBUG re_dataset.py]         L 찾은 heightmap 파일들 ({len(potential_heightmap_files_for_ext)}개): {potential_heightmap_files_for_ext}")
+                        found_heightmap_files_for_condition.extend(potential_heightmap_files_for_ext)
+                
+
+                for heightmap_file_path in found_heightmap_files_for_condition:
+                    heightmap_filename_no_ext = os.path.splitext(os.path.basename(heightmap_file_path))[0]
+                    
+                    should_exclude = False
+                    if self.excluded_heightmap_suffixes: 
+                        for suffix in self.excluded_heightmap_suffixes:
+                            if heightmap_filename_no_ext.endswith(suffix):
+                                should_exclude = True
+                                break
+                    
+                    if not should_exclude:
+                        image_pairs.append((input_file_path, heightmap_file_path))
+        
         return image_pairs
 
     def __len__(self):
