@@ -6,15 +6,91 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau # 1. 스케줄러 임포�
 from tqdm import tqdm
 import os
 import torchvision
-# import torchvision.models as models
+import torchvision.models as models
 import argparse
 from torchvision import transforms
-import lpips
+# import lpips
 
 # 직접 만든 모듈 임포트 (re_dataset.py와 re_model.py가 같은 폴더에 있어야 합니다)
 from re_dataset import TextureHeightmapDataset 
 from re_model import create_model
 
+class VGGPerceptualLoss(nn.Module):
+    def __init__(self, feature_layer_indices=[2, 7, 16, 25, 34], resize=True): # VGG19의 reluX_Y 레이어들
+        super(VGGPerceptualLoss, self).__init__()
+        print("VGGPerceptualLoss 초기화 중...")
+        # VGG19의 특징 추출 부분만 사용, 사전 학습된 가중치 사용
+        vgg_features = models.vgg19(weights=models.VGG19_Weights.IMAGENET1K_V1).features
+        
+        # 선택된 레이어까지만 사용하고, 학습되지 않도록 설정
+        self.features = nn.Sequential(*[vgg_features[i] for i in range(max(feature_layer_indices) + 1)])
+        for param in self.features.parameters():
+            param.requires_grad = False
+        
+        self.feature_layer_indices = feature_layer_indices
+        self.loss_fn = nn.L1Loss() # 특징 맵 간의 차이는 L1으로 계산
+
+        # VGG는 ImageNet 기준으로 정규화된 입력을 기대함
+        self.normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+                                              std=[0.229, 0.224, 0.225])
+        self.resize = resize # VGG 입력 크기(최소 224x224)에 맞게 리사이즈할지 여부
+
+        print(f"VGG19 특징 추출 레이어 선택: {feature_layer_indices}")
+        print("VGGPerceptualLoss 초기화 완료.")
+
+    def _preprocess_image(self, img_tensor):
+        # 현재 이미지는 [-1, 1] 범위로 정규화되어 있다고 가정
+        # VGG 입력을 위해 [0, 1] 범위로 변환 후 ImageNet 정규화 적용
+        img_tensor = (img_tensor + 1) / 2.0 # [-1, 1] -> [0, 1]
+
+        # 입력이 1채널이면 3채널로 복제
+        if img_tensor.size(1) == 1:
+            img_tensor = img_tensor.repeat(1, 3, 1, 1)
+        
+        # VGG 입력 크기 (일반적으로 224x224 이상)에 맞게 리사이즈 (선택 사항)
+        if self.resize and (img_tensor.size(2) < 224 or img_tensor.size(3) < 224) :
+             # 실제로는 모델 입력과 동일한 크기로 학습되므로, VGG가 작은 크기도 처리 가능하면 resize 불필요
+             # 하지만 일반적인 VGG 사용법은 224x224를 가정하므로, 필요시 추가
+             # 여기서는 입력 이미지 크기가 256x256이므로 별도 리사이즈는 하지 않음
+             pass
+
+        return self.normalize(img_tensor)
+
+    def forward(self, pred_img, target_img):
+        pred_img_vgg_input = self._preprocess_image(pred_img)
+        target_img_vgg_input = self._preprocess_image(target_img)
+
+        perceptual_loss = 0.0
+        
+        # VGG의 각 레이어를 통과시키며 특징 추출
+        # current_pred와 current_target을 동시에 레이어에 통과시키고, 
+        # 원하는 feature_layer_indices에 도달할 때마다 손실 계산
+        # 더 효율적인 방법: features 모듈을 필요한 부분만 잘라서 리스트로 만들고 순회
+        
+        # 아래는 선택된 레이어의 출력을 직접 가져오는 방식 (더 명확할 수 있음)
+        # features_pred = []
+        # features_target = []
+        # x_p, x_t = pred_img_vgg_input, target_img_vgg_input
+        # for i, layer in enumerate(self.features):
+        #     x_p = layer(x_p)
+        #     x_t = layer(x_t)
+        #     if i in self.feature_layer_indices:
+        #         features_pred.append(x_p)
+        #         features_target.append(x_t)
+        
+        # for f_p, f_t in zip(features_pred, features_target):
+        #     perceptual_loss += self.loss_fn(f_p, f_t)
+        
+        # 간결한 방식: 각 레이어 통과 시 바로 손실 누적
+        temp_pred = pred_img_vgg_input
+        temp_target = target_img_vgg_input
+        for i, layer in enumerate(self.features):
+            temp_pred = layer(temp_pred)
+            temp_target = layer(temp_target)
+            if i in self.feature_layer_indices:
+                perceptual_loss += self.loss_fn(temp_pred, temp_target)
+                
+        return perceptual_loss
 
 # ----------------- 유틸리티 함수 -----------------
 def save_checkpoint(model, optimizer, scheduler, epoch, filename="my_checkpoint.pth.tar"):
@@ -89,10 +165,10 @@ def save_predictions_as_imgs(loader, model, epoch, folder, device, current_batch
     model.train()
 
 # ----------------- 메인 학습 함수 -----------------
-def train_fn(loader, model, optimizer, l1_loss_fn, lpips_loss_fn, lambda_lpips, scaler, device):
+def train_fn(loader, model, optimizer, l1_loss_fn, perceptual_loss_fn, lambda_perceptual, scaler, device):
     loop = tqdm(loader, desc="Training", leave=True)
     running_l1_loss = 0.0
-    running_lpips_loss = 0.0
+    running_perceptual_loss = 0.0
     running_total_loss = 0.0
     num_samples = 0
 
@@ -104,11 +180,9 @@ def train_fn(loader, model, optimizer, l1_loss_fn, lpips_loss_fn, lambda_lpips, 
         with torch.amp.autocast(device_type=device_type, enabled=(device_type != 'cpu')):
             predictions = model(data)
             
-            l1_loss_val = l1_loss_fn(predictions, targets)
-            # LPIPS는 이미지 쌍을 받아 스칼라 값을 반환, 보통 배치에 대한 평균을 내줌
-            # LPIPS 입력은 [-1, 1] 범위의 이미지를 기대합니다. 현재 predictions와 targets가 이 범위이므로 바로 사용.
-            lpips_loss_val = lpips_loss_fn(predictions, targets).mean() # 배치 평균 LPIPS 값
-            total_loss = l1_loss_val + (lambda_lpips * lpips_loss_val) # 두 손실을 가중 합산
+            l1_loss = l1_loss_fn(predictions, targets)
+            p_loss = perceptual_loss_fn(predictions, targets) 
+            total_loss = l1_loss + (lambda_perceptual * p_loss) 
         
         optimizer.zero_grad()
         if device_type != 'cpu':
@@ -119,19 +193,19 @@ def train_fn(loader, model, optimizer, l1_loss_fn, lpips_loss_fn, lambda_lpips, 
             total_loss.backward()
             optimizer.step()
 
-        running_l1_loss += l1_loss_val.item() * data.size(0)
-        running_lpips_loss += lpips_loss_val.item() * data.size(0) # .item()으로 스칼라 값 추출
+        running_l1_loss += l1_loss.item() * data.size(0)
+        running_perceptual_loss += p_loss.item() * data.size(0)
         running_total_loss += total_loss.item() * data.size(0)
         num_samples += data.size(0)
         
-        loop.set_postfix(l1=l1_loss_val.item(), lpips=lpips_loss_val.item(), total=total_loss.item())
+        loop.set_postfix(l1=l1_loss.item(), percep=p_loss.item(), total=total_loss.item())
     
     avg_l1_loss = running_l1_loss / num_samples if num_samples > 0 else 0.0
-    avg_lpips_loss = running_lpips_loss / num_samples if num_samples > 0 else 0.0
+    avg_perceptual_loss = running_perceptual_loss / num_samples if num_samples > 0 else 0.0
     avg_total_loss = running_total_loss / num_samples if num_samples > 0 else 0.0
     
-    print(f"에포크 평균 손실 - Total: {avg_total_loss:.4f}, L1: {avg_l1_loss:.4f}, LPIPS: {avg_lpips_loss:.4f}")
-    return avg_total_loss 
+    print(f"에포크 평균 손실 - Total: {avg_total_loss:.4f}, L1: {avg_l1_loss:.4f}, Perceptual: {avg_perceptual_loss:.4f}")
+    return avg_total_loss
 
 # ----------------- 메인 실행 부분 -----------------
 def main(args):
@@ -141,10 +215,7 @@ def main(args):
     model = create_model(device=DEVICE, encoder_name=args.encoder)
     l1_loss_fn = nn.L1Loss().to(DEVICE) # L1 손실 함수
     # ▼▼▼▼▼ 지각 손실 함수 초기화 ▼▼▼▼▼
-    lpips_loss_fn = lpips.LPIPS(net='alex', verbose=False).to(DEVICE)
-
-    for param in lpips_loss_fn.parameters():
-        param.requires_grad = False
+    perceptual_loss_fn = VGGPerceptualLoss().to(DEVICE)
     
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
     # 학습률 스케줄러 초기화
@@ -205,7 +276,7 @@ def main(args):
         current_lr = optimizer.param_groups[0]['lr']
         print(f"\n--- 에포크 {epoch+1}/{args.num_epochs} --- 학습률: {current_lr:.2e} ---")
         
-        avg_epoch_loss = train_fn(loader, model, optimizer, l1_loss_fn, lpips_loss_fn, args.lambda_lpips, scaler, DEVICE)
+        avg_epoch_loss = train_fn(loader, model, optimizer, l1_loss_fn, perceptual_loss_fn, args.lambda_perceptual, scaler, DEVICE)
         
         # 에포크가 끝난 후 스케줄러 업데이트
         scheduler.step(avg_epoch_loss)
@@ -215,6 +286,11 @@ def main(args):
             print(f"\n--- 에포크 {epoch+1}, 저장 분기점 도달 ---")
             checkpoint_path = os.path.join(CHECKPOINT_DIR, f"checkpoint_epoch_{epoch+1}.pth.tar")
             save_checkpoint(model, optimizer, scheduler, epoch, filename=checkpoint_path)
+            
+            # 현재 배치의 실제 크기를 전달 (마지막 배치가 작을 수 있음)
+            # save_predictions_as_imgs 함수는 loader를 순회하므로, 현재 배치 크기를 알 수 없음.
+            # 대신, loader의 batch_size를 사용하거나, loader의 첫 번째 배치를 보고 결정할 수 있음.
+            # 여기서는 args.batch_size를 사용. (더 정확하려면 loader의 실제 배치 크기를 알아내야 함)
             save_predictions_as_imgs(loader, model, epoch, folder=SAVE_PREDICTIONS_DIR, device=DEVICE, current_batch_size=args.batch_size)
 
 if __name__ == "__main__":
@@ -249,7 +325,7 @@ if __name__ == "__main__":
     parser.add_argument("--lr_factor", type=float, default=0.1, 
                         help="ReduceLROnPlateau의 factor 값 (학습률 감소 비율)")
     
-    parser.add_argument("--lambda_lpips", type=float, default=0.5, help="지각 손실의 가중치 (L1 손실에 대한 비율)")
+    parser.add_argument("--lambda_perceptual", type=float, default=0.1, help="지각 손실의 가중치 (L1 손실에 대한 비율)")
     
     args, unknown = parser.parse_known_args() # 알 수 없는 인자는 무시
     main(args)

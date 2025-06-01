@@ -140,21 +140,23 @@ echo "Current working directory: $(pwd)"
 echo "Starting Python training script (re_train.py)..."
 # re_train.py가 받는 인자에 맞게 수정
 # (이전 trainGPU.py와 인자 이름이 다를 수 있으므로 re_train.py의 argparse 부분을 참고하여 정확히 맞춰야 함)
-python re_train.py \
-    --load_model "/data/hojun313/JP/training_outputs/res34_lr1e-4_bs32_lpips/checkpoints/checkpoint_epoch_2500.pth.tar" \
+python re_train_pix2pix.py \
+    --load_model "/data/hojun313/JP/pix2pix_outputs/res34_lr1e-4_bs32_lpips/checkpoints/checkpoint_epoch_0000.pth.tar" \
     --data_root "$LOCAL_DATA_FOR_PYTHON_SCRIPT" \
-    --output_dir "/data/hojun313/JP/training_outputs" \
+    --output_dir "/data/hojun313/JP/pix2pix_outputs" \
     --model_tag "$MODEL_TAG_ARG" \
-    --batch_size 32 \
+    --batch_size 1 \
     --num_workers 8 \
-    --num_epochs 1000 \
-    --learning_rate 1e-04 \
-    --encoder "efficientnet-b7" \
-    --save_interval 50 \
+    --num_epochs 200 \
+    --lr_g 2e-4 \
+    --lr_d 2e-4 \
+    --encoder "resnet34" \
+    --save_interval 25 \
     --image_size 256 \
     --lr_patience 10 \
-    --lr_factor 0.2 \
-    --lambda_lpips 5.0 \
+    --lr_factor 0.5 \
+    --lambda_l1 100.0 \
+    --use_gpu
 
 PYTHON_EXIT_CODE=$?
 if [ $PYTHON_EXIT_CODE -ne 0 ]; then
