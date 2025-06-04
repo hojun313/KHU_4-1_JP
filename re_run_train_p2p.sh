@@ -151,7 +151,7 @@ python re_train_pix2pix.py \
     --lr_g 2e-4 \
     --lr_d 2e-4 \
     --encoder "resnet34" \
-    --save_interval 25 \
+    --save_interval 10 \
     --image_size 256 \
     --lr_patience 10 \
     --lr_factor 0.5 \

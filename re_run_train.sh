@@ -145,16 +145,16 @@ python re_train.py \
     --data_root "$LOCAL_DATA_FOR_PYTHON_SCRIPT" \
     --output_dir "/data/hojun313/JP/training_outputs" \
     --model_tag "$MODEL_TAG_ARG" \
-    --batch_size 32 \
+    --batch_size 40 \
     --num_workers 8 \
     --num_epochs 1000 \
     --learning_rate 1e-04 \
     --encoder "efficientnet-b7" \
-    --save_interval 50 \
+    --save_interval 25 \
     --image_size 256 \
     --lr_patience 10 \
-    --lr_factor 0.2 \
-    --lambda_lpips 5.0 \
+    --lr_factor 0.5 \
+    --lambda_lpips 10.0 \
 
 PYTHON_EXIT_CODE=$?
 if [ $PYTHON_EXIT_CODE -ne 0 ]; then
