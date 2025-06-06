@@ -129,13 +129,13 @@ if __name__ == "__main__":
     # --- 경로 관련 인자 ---
     # 사용자가 이 기본값들을 실제 경로로 변경해야 함을 명시
     parser.add_argument("--checkpoint_path", type=str, 
-                        default="training_outputs/efb7_lr1e-4_bs40_lpips_0/checkpoints/checkpoint_epoch_1000.pth.tar", # 👈 사용자가 실제 경로로 변경해야 함
+                        default="training_outputs/efb7_lr1e-4_bs40_lpips_0/checkpoints/checkpoint_epoch_100.pth.tar",
                         help="학습된 모델의 체크포인트 파일 경로 (예: checkpoints/epoch_100.pth.tar)")
     parser.add_argument("--input_image_path", type=str, 
-                        default="IOFiles/Input/input_Dotpaper.png", # 👈 사용자가 실제 경로로 변경해야 함
+                        default="test_dataset/Carpet_Carpet4/input_Carpet4.png",
                         help="입력 재질 이미지 파일 경로 (예: test_images/fabric.png)")
     parser.add_argument("--output_image_path", type=str, 
-                        default="IOFiles/Output/output_Dotpaper_1000.png", # 👈 사용자가 실제 경로로 변경해야 함
+                        default="test_dataset/output_Carpet4_700.png",
                         help="예측된 하이트맵을 저장할 경로 (기본값: 현재 폴더의 predicted_heightmap.png)")
     
     # --- 모델 및 추론 설정 관련 인자 ---

@@ -2,3 +2,4 @@ heightmap_dataset.tar
 heightmap_dataset_83.tar
 /training_outputs/ef-b7_lr1e-4_bs32_lpips_re/checkpoints
 /training_outputs/efb7_lr1e-4_bs40_lpips_0/checkpoints
+/test_dataset

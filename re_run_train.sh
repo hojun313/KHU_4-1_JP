@@ -152,7 +152,7 @@ python re_train.py \
     --encoder "efficientnet-b7" \
     --save_interval 25 \
     --image_size 256 \
-    --lr_patience 10 \
+    --lr_patience 5 \
     --lr_factor 0.5 \
     --lambda_lpips 10.0 \
 
