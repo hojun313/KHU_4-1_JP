@@ -4,41 +4,15 @@ from PIL import Image
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
-import random # For common_transform example
-import shutil # For rmtree, to be used cautiously
+import random
+import shutil
 
 class TextureHeightmapDataset(Dataset):
-    """
-    입력 재질 이미지와 대상 하이트맵 이미지를 로드하기 위한 PyTorch Dataset 클래스입니다.
-    수정된 디렉토리 구조를 따릅니다:
-    data_root/
-    ├── MaterialA/
-    │   ├── input_pattern.png  (각 재질 폴더 당 하나의 입력 이미지)
-    │   └── output/
-    │       ├── condition_folder_1/ (예: pattern_1)
-    │       │   └── heightmaps/
-    │       │       ├── heightmap_00000.png
-    │       │       └── heightmap_00020.png
-    │       └── condition_folder_2/ (예: pattern_2)
-    │           └── heightmaps/
-    │               └── ...
-    └── MaterialB/
-        └── ...
-    """
     def __init__(self, data_root, 
                  transform_texture=None, 
                  transform_heightmap=None, 
                  common_transform=None,
                  exclude_heightmap_indices_up_to=15):
-        """
-        Args:
-            data_root (str): 데이터셋의 루트 디렉토리 경로.
-            transform_texture (callable, optional): 재질 이미지에 적용될 변환.
-            transform_heightmap (callable, optional): 하이트맵 이미지에 적용될 변환.
-            common_transform (callable, optional): 재질과 하이트맵 모두에 적용될 변환.
-            exclude_heightmap_indices_up_to (int, optional): 이 값까지의 인덱스를 가진 하이트맵 파일(_xxxxx 형식)을 제외.
-                                                            예: 15이면 _00000부터 _00015까지 제외. None이면 제외 안 함.
-        """
         self.data_root = data_root
         self.transform_texture = transform_texture
         self.transform_heightmap = transform_heightmap
@@ -60,7 +34,6 @@ class TextureHeightmapDataset(Dataset):
     def _build_image_pairs(self):
         image_pairs = []
         
-        # 1. data_root에서 모든 아이템 찾기
         items_in_data_root_pattern = os.path.join(self.data_root, '*')
         all_items_in_data_root = glob.glob(items_in_data_root_pattern)
 
@@ -71,19 +44,16 @@ class TextureHeightmapDataset(Dataset):
                 material_folders.append(item_path)
 
         if not material_folders:
-            return [] # 빈 리스트 반환
+            return []
 
         for material_folder_path in material_folders: 
             
-            # input_*.ext 파일 찾기
             input_files_found_for_this_material = []
             for ext_idx, ext in enumerate(self.supported_extensions):
                 input_files_pattern = os.path.join(material_folder_path, f'input_*{ext}')
                 potential_input_files_for_ext = glob.glob(input_files_pattern)
                 if potential_input_files_for_ext:
                     input_files_found_for_this_material.extend(potential_input_files_for_ext)
-                # else:
-                #     print(f"[DEBUG re_dataset.py]    L 확장자 '{ext}'에 대해 찾은 input 파일 없음.")
 
             if not input_files_found_for_this_material:
                 continue
@@ -95,7 +65,6 @@ class TextureHeightmapDataset(Dataset):
             if not os.path.isdir(output_base_folder):
                 continue
 
-            # 'output' 폴더 내의 모든 하위 폴더 (조건 폴더) 순회
             condition_folder_pattern = os.path.join(output_base_folder, '*')
             all_items_in_output = glob.glob(condition_folder_pattern)
             
@@ -114,10 +83,8 @@ class TextureHeightmapDataset(Dataset):
                 found_heightmap_files_for_condition = []
                 for ext_idx, ext in enumerate(self.supported_extensions):
                     heightmap_files_pattern = os.path.join(heightmaps_folder, f'*{ext}')
-                    # print(f"[DEBUG re_dataset.py]       L heightmap 파일 탐색 패턴 (확장자 {ext_idx+1}/{len(self.supported_extensions)} - '{ext}'): '{heightmap_files_pattern}'")
                     potential_heightmap_files_for_ext = glob.glob(heightmap_files_pattern)
                     if potential_heightmap_files_for_ext:
-                        # print(f"[DEBUG re_dataset.py]         L 찾은 heightmap 파일들 ({len(potential_heightmap_files_for_ext)}개): {potential_heightmap_files_for_ext}")
                         found_heightmap_files_for_condition.extend(potential_heightmap_files_for_ext)
                 
 
@@ -177,16 +144,9 @@ class TextureHeightmapDataset(Dataset):
 
         return input_image, heightmap_image
 
-# --- 사용 예시 ---
 if __name__ == '__main__':
-    # 🛑 중요: 이 스크립트를 직접 실행할 때는 아래 `your_actual_data_root` 변수에
-    #         실제 데이터셋이 있는 경로를 정확히 입력해야 합니다.
-    #         더미 데이터 생성/삭제 로직은 제거되었습니다.
 
-    # ▼▼▼▼▼ 실제 데이터셋 경로를 여기에 입력하세요 ▼▼▼▼▼
-    your_actual_data_root = "heightmap_dataset" # 예시 경로입니다. 실제 경로로 수정하세요.
-    # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-
+    your_actual_data_root = "heightmap_dataset"
     if not os.path.isdir(your_actual_data_root):
         print(f"오류: 지정된 데이터 경로 '{your_actual_data_root}'를 찾을 수 없습니다.")
         print("스크립트 내의 'your_actual_data_root' 변수를 올바른 경로로 수정해주세요.")
@@ -208,7 +168,7 @@ if __name__ == '__main__':
             heightmap_normalize
         ])
         
-        class SynchronizedRandomHorizontalFlip: # 간단한 공통 변환 예시
+        class SynchronizedRandomHorizontalFlip:
             def __init__(self, p=0.5):
                 self.p = p
             def __call__(self, img1, img2):
@@ -217,7 +177,6 @@ if __name__ == '__main__':
                 return img1, img2
 
         common_transform_instance = SynchronizedRandomHorizontalFlip(p=0.5)
-        # common_transform_instance = None # 공통 변환 사용 안 할 경우
 
         try:
             dataset = TextureHeightmapDataset(
@@ -225,13 +184,13 @@ if __name__ == '__main__':
                 transform_texture=transform_texture,
                 transform_heightmap=transform_heightmap,
                 common_transform=common_transform_instance,
-                exclude_heightmap_indices_up_to=5 # 필요에 따라 조절
+                exclude_heightmap_indices_up_to=5
             )
 
             print(f"Dataset length: {len(dataset)}")
 
             if len(dataset) > 0:
-                def collate_fn_skip_none(batch): # __getitem__에서 None 반환 시 배치를 안전하게 구성
+                def collate_fn_skip_none(batch):
                     batch = list(filter(lambda x: x[0] is not None and x[1] is not None, batch))
                     if not batch: 
                         return torch.tensor([]), torch.tensor([]) 
@@ -245,16 +204,16 @@ if __name__ == '__main__':
                     for i_batch, (texture_batch, heightmap_batch) in enumerate(dataloader):
                         if texture_batch.numel() == 0 and heightmap_batch.numel() == 0:
                             print("  배치에 유효한 데이터가 없습니다 (모든 샘플이 None으로 처리되었을 수 있음).")
-                            continue # 다음 배치 시도 (만약 있다면)
+                            continue
                         
                         print(f"  Batch {i_batch+1}:")
                         print(f"    Texture batch shape: {texture_batch.shape}, dtype: {texture_batch.dtype}")
                         print(f"    Heightmap batch shape: {heightmap_batch.shape}, dtype: {heightmap_batch.dtype}")
                         first_batch_retrieved = True
-                        break # 첫 번째 유효한 배치만 확인하고 중단
+                        break
                     
                     if not first_batch_retrieved and len(dataset) > 0:
-                         print("  DataLoader에서 유효한 배치를 가져올 수 없었습니다. 데이터셋 아이템 처리 중 오류가 많을 수 있습니다.")
+                        print("  DataLoader에서 유효한 배치를 가져올 수 없었습니다. 데이터셋 아이템 처리 중 오류가 많을 수 있습니다.")
 
                 except Exception as e:
                     print(f"  DataLoader 테스트 중 오류: {e}")

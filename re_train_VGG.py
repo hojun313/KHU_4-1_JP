@@ -2,57 +2,44 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torch.optim.lr_scheduler import ReduceLROnPlateau # 1. 스케줄러 임포트
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 import os
 import torchvision
 import torchvision.models as models
 import argparse
 from torchvision import transforms
-# import lpips
-
-# 직접 만든 모듈 임포트 (re_dataset.py와 re_model.py가 같은 폴더에 있어야 합니다)
 from re_dataset import TextureHeightmapDataset 
 from re_model import create_model
 
 class VGGPerceptualLoss(nn.Module):
-    def __init__(self, feature_layer_indices=[2, 7, 16, 25, 34], resize=True): # VGG19의 reluX_Y 레이어들
+    def __init__(self, feature_layer_indices=[2, 7, 16, 25, 34], resize=True):
         super(VGGPerceptualLoss, self).__init__()
         print("VGGPerceptualLoss 초기화 중...")
-        # VGG19의 특징 추출 부분만 사용, 사전 학습된 가중치 사용
         vgg_features = models.vgg19(weights=models.VGG19_Weights.IMAGENET1K_V1).features
         
-        # 선택된 레이어까지만 사용하고, 학습되지 않도록 설정
         self.features = nn.Sequential(*[vgg_features[i] for i in range(max(feature_layer_indices) + 1)])
         for param in self.features.parameters():
             param.requires_grad = False
         
         self.feature_layer_indices = feature_layer_indices
-        self.loss_fn = nn.L1Loss() # 특징 맵 간의 차이는 L1으로 계산
-
-        # VGG는 ImageNet 기준으로 정규화된 입력을 기대함
+        self.loss_fn = nn.L1Loss()
+        
         self.normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], 
                                               std=[0.229, 0.224, 0.225])
-        self.resize = resize # VGG 입력 크기(최소 224x224)에 맞게 리사이즈할지 여부
+        self.resize = resize
 
         print(f"VGG19 특징 추출 레이어 선택: {feature_layer_indices}")
         print("VGGPerceptualLoss 초기화 완료.")
 
     def _preprocess_image(self, img_tensor):
-        # 현재 이미지는 [-1, 1] 범위로 정규화되어 있다고 가정
-        # VGG 입력을 위해 [0, 1] 범위로 변환 후 ImageNet 정규화 적용
-        img_tensor = (img_tensor + 1) / 2.0 # [-1, 1] -> [0, 1]
+        img_tensor = (img_tensor + 1) / 2.0
 
-        # 입력이 1채널이면 3채널로 복제
         if img_tensor.size(1) == 1:
             img_tensor = img_tensor.repeat(1, 3, 1, 1)
         
-        # VGG 입력 크기 (일반적으로 224x224 이상)에 맞게 리사이즈 (선택 사항)
         if self.resize and (img_tensor.size(2) < 224 or img_tensor.size(3) < 224) :
-             # 실제로는 모델 입력과 동일한 크기로 학습되므로, VGG가 작은 크기도 처리 가능하면 resize 불필요
-             # 하지만 일반적인 VGG 사용법은 224x224를 가정하므로, 필요시 추가
-             # 여기서는 입력 이미지 크기가 256x256이므로 별도 리사이즈는 하지 않음
-             pass
+            pass
 
         return self.normalize(img_tensor)
 
@@ -62,26 +49,6 @@ class VGGPerceptualLoss(nn.Module):
 
         perceptual_loss = 0.0
         
-        # VGG의 각 레이어를 통과시키며 특징 추출
-        # current_pred와 current_target을 동시에 레이어에 통과시키고, 
-        # 원하는 feature_layer_indices에 도달할 때마다 손실 계산
-        # 더 효율적인 방법: features 모듈을 필요한 부분만 잘라서 리스트로 만들고 순회
-        
-        # 아래는 선택된 레이어의 출력을 직접 가져오는 방식 (더 명확할 수 있음)
-        # features_pred = []
-        # features_target = []
-        # x_p, x_t = pred_img_vgg_input, target_img_vgg_input
-        # for i, layer in enumerate(self.features):
-        #     x_p = layer(x_p)
-        #     x_t = layer(x_t)
-        #     if i in self.feature_layer_indices:
-        #         features_pred.append(x_p)
-        #         features_target.append(x_t)
-        
-        # for f_p, f_t in zip(features_pred, features_target):
-        #     perceptual_loss += self.loss_fn(f_p, f_t)
-        
-        # 간결한 방식: 각 레이어 통과 시 바로 손실 누적
         temp_pred = pred_img_vgg_input
         temp_target = target_img_vgg_input
         for i, layer in enumerate(self.features):
@@ -92,22 +59,19 @@ class VGGPerceptualLoss(nn.Module):
                 
         return perceptual_loss
 
-# ----------------- 유틸리티 함수 -----------------
 def save_checkpoint(model, optimizer, scheduler, epoch, filename="my_checkpoint.pth.tar"):
-    """모델, 옵티마이저, 스케줄러 상태와 현재 에포크를 저장합니다."""
     print("=> 체크포인트 저장")
     checkpoint = {
         "state_dict": model.state_dict(),
         "optimizer": optimizer.state_dict(),
-        "scheduler": scheduler.state_dict(), # 스케줄러 상태 추가
+        "scheduler": scheduler.state_dict(),
         "epoch": epoch,
     }
     torch.save(checkpoint, filename)
 
 def load_checkpoint(checkpoint_file, model, optimizer, scheduler, lr_for_optimizer, device):
-    """체크포인트로부터 모델, 옵티마이저, 스케줄러 상태를 불러옵니다."""
     print(f"=> 체크포인트 불러오기: {checkpoint_file}")
-    checkpoint = torch.load(checkpoint_file, map_location=device) # 현재 device로 로드
+    checkpoint = torch.load(checkpoint_file, map_location=device)
     
     model.load_state_dict(checkpoint["state_dict"])
     optimizer.load_state_dict(checkpoint["optimizer"])
@@ -121,19 +85,16 @@ def load_checkpoint(checkpoint_file, model, optimizer, scheduler, lr_for_optimiz
     else:
         print("경고: 체크포인트에 스케줄러 상태가 없거나 None입니다. 스케줄러는 초기 상태로 시작합니다.")
         
-    start_epoch = checkpoint.get("epoch", -1) + 1 # .get()으로 이전 버전 호환성 확보
+    start_epoch = checkpoint.get("epoch", -1) + 1
     print(f"=> 체크포인트 로드 완료. 에포크 {start_epoch}부터 학습을 재개합니다.")
     
-    # 옵티마이저의 학습률을 현재 설정값으로 강제 업데이트 (선택 사항이나, 재개 시 명확성을 위해 권장)
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr_for_optimizer
         
     return start_epoch
 
 def save_predictions_as_imgs(loader, model, epoch, folder, device, current_batch_size):
-    """검증 데이터셋의 예측 결과를 [윗줄: 정답 / 아랫줄: 예측] 형태로 저장합니다."""
     model.eval()
-    # 저장할 이미지 쌍의 최대 개수 (배치 단위)
     num_batches_to_save = 5 
     
     saved_count = 0
@@ -146,25 +107,20 @@ def save_predictions_as_imgs(loader, model, epoch, folder, device, current_batch
 
         with torch.no_grad():
             preds = model(x)
-            # -1 ~ 1 범위를 0 ~ 1 범위로 변환
             preds = (preds * 0.5) + 0.5 
         
-        # 정답(y)도 -1~1 범위이므로 동일하게 변환
         y_unnormalized = (y * 0.5) + 0.5
         
-        # 윗줄: 정답, 아랫줄: 예측. 각 줄은 배치 크기만큼의 이미지를 가짐
-        # y_unnormalized와 preds의 채널 수가 다를 수 있으므로, y_unnormalized도 1채널로 슬라이싱
         grid_tensor = torch.cat((y_unnormalized[:, :1, :, :], preds), dim=0)
 
         torchvision.utils.save_image(
             grid_tensor, 
             f"{folder}/comparison_epoch_{epoch+1}_batch_{idx}.png", 
-            nrow=x.size(0) # 현재 배치의 실제 이미지 수 (마지막 배치는 더 작을 수 있음)
+            nrow=x.size(0)
         )
         saved_count += 1
     model.train()
 
-# ----------------- 메인 학습 함수 -----------------
 def train_fn(loader, model, optimizer, l1_loss_fn, perceptual_loss_fn, lambda_perceptual, scaler, device):
     loop = tqdm(loader, desc="Training", leave=True)
     running_l1_loss = 0.0
@@ -207,24 +163,21 @@ def train_fn(loader, model, optimizer, l1_loss_fn, perceptual_loss_fn, lambda_pe
     print(f"에포크 평균 손실 - Total: {avg_total_loss:.4f}, L1: {avg_l1_loss:.4f}, Perceptual: {avg_perceptual_loss:.4f}")
     return avg_total_loss
 
-# ----------------- 메인 실행 부분 -----------------
 def main(args):
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"사용 장치: {DEVICE}")
 
     model = create_model(device=DEVICE, encoder_name=args.encoder)
-    l1_loss_fn = nn.L1Loss().to(DEVICE) # L1 손실 함수
-    # ▼▼▼▼▼ 지각 손실 함수 초기화 ▼▼▼▼▼
+    l1_loss_fn = nn.L1Loss().to(DEVICE)
     perceptual_loss_fn = VGGPerceptualLoss().to(DEVICE)
     
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
-    # 학습률 스케줄러 초기화
     scheduler = ReduceLROnPlateau(
         optimizer, 
-        mode='min',     # 손실 값이 최소화되는 것을 목표
-        factor=args.lr_factor, # 학습률 감소 비율
-        patience=args.lr_patience, # 이 에포크 수 동안 손실 개선이 없으면 학습률 감소
-        verbose=True    # 학습률 변경 시 메시지 출력
+        mode='min',
+        factor=args.lr_factor,
+        patience=args.lr_patience,
+        verbose=True
     )
 
     start_epoch = 0
@@ -234,24 +187,22 @@ def main(args):
         else:
             print(f"경고: 지정된 체크포인트 파일 '{args.load_model}'를 찾을 수 없습니다. 처음부터 학습합니다.")
 
-    # 이미지 변환 정의
     transform_texture = transforms.Compose([
         transforms.Resize((args.image_size, args.image_size)), 
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]) # -1 ~ 1 범위로 정규화
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
     ])
     transform_heightmap = transforms.Compose([
         transforms.Resize((args.image_size, args.image_size)), 
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5], std=[0.5]) # -1 ~ 1 범위로 정규화 (흑백)
+        transforms.Normalize(mean=[0.5], std=[0.5])
     ])
 
-    # 데이터셋 및 데이터로더 생성
     dataset = TextureHeightmapDataset(
         data_root=args.data_root,
         transform_texture=transform_texture,
         transform_heightmap=transform_heightmap,
-        exclude_heightmap_indices_up_to=args.exclude_indices # 인자로부터 받도록 수정
+        exclude_heightmap_indices_up_to=args.exclude_indices
     )
     loader = DataLoader(
         dataset, 
@@ -261,36 +212,27 @@ def main(args):
         pin_memory=True
     )
     
-    # GradScaler 초기화 (GPU 사용 시에만 활성화)
     scaler_enabled = (DEVICE != 'cpu')
     scaler = torch.amp.GradScaler(DEVICE.split(':')[0] if DEVICE != 'cpu' else 'cpu', enabled=scaler_enabled)
 
-    # 결과 저장 디렉토리 (모델 태그 포함)
     CHECKPOINT_DIR = os.path.join(args.output_dir, args.model_tag, "checkpoints")
     SAVE_PREDICTIONS_DIR = os.path.join(args.output_dir, args.model_tag, "saved_images")
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     os.makedirs(SAVE_PREDICTIONS_DIR, exist_ok=True)
 
-    # 학습 루프
     for epoch in range(start_epoch, args.num_epochs):
         current_lr = optimizer.param_groups[0]['lr']
         print(f"\n--- 에포크 {epoch+1}/{args.num_epochs} --- 학습률: {current_lr:.2e} ---")
         
         avg_epoch_loss = train_fn(loader, model, optimizer, l1_loss_fn, perceptual_loss_fn, args.lambda_perceptual, scaler, DEVICE)
         
-        # 에포크가 끝난 후 스케줄러 업데이트
         scheduler.step(avg_epoch_loss)
         
-        # 체크포인트 및 예측 이미지 저장 (주기에 따라)
         if (epoch + 1) % args.save_interval == 0 or (epoch + 1) == args.num_epochs:
             print(f"\n--- 에포크 {epoch+1}, 저장 분기점 도달 ---")
             checkpoint_path = os.path.join(CHECKPOINT_DIR, f"checkpoint_epoch_{epoch+1}.pth.tar")
             save_checkpoint(model, optimizer, scheduler, epoch, filename=checkpoint_path)
             
-            # 현재 배치의 실제 크기를 전달 (마지막 배치가 작을 수 있음)
-            # save_predictions_as_imgs 함수는 loader를 순회하므로, 현재 배치 크기를 알 수 없음.
-            # 대신, loader의 batch_size를 사용하거나, loader의 첫 번째 배치를 보고 결정할 수 있음.
-            # 여기서는 args.batch_size를 사용. (더 정확하려면 loader의 실제 배치 크기를 알아내야 함)
             save_predictions_as_imgs(loader, model, epoch, folder=SAVE_PREDICTIONS_DIR, device=DEVICE, current_batch_size=args.batch_size)
 
 if __name__ == "__main__":
@@ -319,7 +261,6 @@ if __name__ == "__main__":
     parser.add_argument("--image_size", type=int, default=256, help="이미지 리사이즈 크기")
     parser.add_argument("--exclude_indices", type=int, default=15, help="제외할 하이트맵 인덱스 상한값 (0부터 시작, 이 값까지 제외)")
     
-    # 학습률 스케줄러 관련 인자
     parser.add_argument("--lr_patience", type=int, default=5, 
                         help="ReduceLROnPlateau의 patience 값 (손실 개선이 없는 것을 몇 에포크 참을지)")
     parser.add_argument("--lr_factor", type=float, default=0.1, 
@@ -327,5 +268,5 @@ if __name__ == "__main__":
     
     parser.add_argument("--lambda_perceptual", type=float, default=0.1, help="지각 손실의 가중치 (L1 손실에 대한 비율)")
     
-    args, unknown = parser.parse_known_args() # 알 수 없는 인자는 무시
+    args, unknown = parser.parse_known_args()
     main(args)
