@@ -20,13 +20,13 @@ class GelSightDataset(Dataset):
         self.image_pairs = self._build_image_pairs()
 
         self.transform_input_pil_to_tensor = T.Compose([
-            T.Resize(self.target_size), # PIL 이미지를 최종 target_size로 리사이즈
+            T.Resize(self.target_size),
             T.ToTensor(),
             T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
         ])
 
         self.transform_output_pil_to_tensor = T.Compose([
-            T.Resize(self.target_size), # PIL 이미지를 최종 target_size로 리사이즈
+            T.Resize(self.target_size),
             T.ToTensor(),
             T.Normalize(mean=[0.5], std=[0.5])
         ])
@@ -98,11 +98,11 @@ class GelSightDataset(Dataset):
             input_image_pil = Image.open(input_path).convert("RGB")
             output_image_pil = Image.open(output_path).convert("L")
 
-            input_image_rgb_from_gray = input_image_pil.convert("RGB") # 흑백을 3채널로
-            input_tensor = self.transform_input_pil_to_tensor(input_image_pil) # 리사이즈, 텐서화, 정규화
+            input_image_rgb_from_gray = input_image_pil.convert("RGB")
+            input_tensor = self.transform_input_pil_to_tensor(input_image_pil)
 
-            output_tensor_1channel = self.transform_output_pil_to_tensor(output_image_pil) # 리사이즈, 텐서화, 정규화
-            output_tensor_3channel = output_tensor_1channel.repeat(3, 1, 1) # 3채널로 복제
+            output_tensor_1channel = self.transform_output_pil_to_tensor(output_image_pil)
+            output_tensor_3channel = output_tensor_1channel.repeat(3, 1, 1)
 
         except Exception as e:
             print(f"오류: 이미지 처리 중 문제 발생 - 입력: {input_path}, 하이트맵: {output_path}")
