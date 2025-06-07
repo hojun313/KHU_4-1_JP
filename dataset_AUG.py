@@ -4,20 +4,20 @@ from PIL import Image
 import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as T
-import torchvision.transforms.functional as TF # 데이터 증강 및 잘라내기를 위해 사용
-import random # 데이터 증강을 위해 사용
+import torchvision.transforms.functional as TF
+import random
 import numpy as np
 
 
 class GelSightDataset(Dataset):
     def __init__(self, data_root, target_size=(128, 128), augment=False, excluded_materials=None):
         self.data_root = data_root
-        self.target_size = target_size # 최종 이미지가 리사이즈될 목표 크기
-        self.augment = augment # 증강 사용 여부 저장
-        self.center_crop_size = (256, 256) # <--- 중앙 잘라내기 크기 (높이, 너비)
+        self.target_size = target_size
+        self.augment = augment
+        self.center_crop_size = (256, 256)
         
-        self.excluded_materials = excluded_materials if excluded_materials is not None else [] # 제외할 재질 목록
-        if self.excluded_materials: # 제외 목록이 있을 경우에만 출력
+        self.excluded_materials = excluded_materials if excluded_materials is not None else []
+        if self.excluded_materials:
             print(f"알림: 다음 재질들이 학습에서 제외되도록 설정되었습니다: {', '.join(self.excluded_materials)}")
             print(f"제외된 재질 개수: {len(self.excluded_materials)}")
         else:
@@ -25,23 +25,20 @@ class GelSightDataset(Dataset):
 
         self.image_pairs = self._build_image_pairs()
 
-        # 입력 이미지(흑백 원본 -> 3채널 RGB 확장 후 정규화)를 위한 변환 정의
         self.transform_input_pil_to_tensor = T.Compose([
-            T.Resize(target_size), # PIL 이미지를 최종 target_size로 리사이즈
+            T.Resize(target_size),
             T.ToTensor(),
             T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
         ])
 
-        # 목표 이미지를 위한 transform (흑백 하이트맵)
         self.transform_output_pil_to_tensor = T.Compose([
-            T.Resize(target_size), # PIL 이미지를 최종 target_size로 리사이즈
+            T.Resize(target_size),
             T.ToTensor(),
             T.Normalize(mean=[0.5], std=[0.5])
         ])
         
         if self.augment:
             print("데이터 증강(랜덤 4방향 회전, 랜덤 상하/좌우 반전)이 활성화되었습니다.")
-        # 중앙 잘라내기가 기본으로 적용됨을 명시
         print(f"이미지 중앙 잘라내기(크기: {self.center_crop_size})가 적용됩니다. 잘라낸 후 {self.target_size}로 리사이즈됩니다.")
         if self.excluded_materials:
             print(f"제외돤 재질: {', '.join(self.excluded_materials)}")
@@ -51,27 +48,23 @@ class GelSightDataset(Dataset):
 
     def _build_image_pairs(self):
         image_pairs = []
-        # data_root 바로 아래의 폴더들을 재질 폴더로 간주
         all_material_folder_paths = [d for d in glob.glob(os.path.join(self.data_root, '*')) if os.path.isdir(d)]
         
-        # 제외할 재질 폴더 필터링
         material_folders_to_use = []
         for material_path in all_material_folder_paths:
-            material_name = self._get_material_name_from_path(material_path) # 재질 이름 추출 함수 필요
+            material_name = self._get_material_name_from_path(material_path)
             if material_name not in self.excluded_materials:
                 material_folders_to_use.append(material_path)
             else:
                 print(f"알림: 재질 '{material_name}'은(는) 이번 학습에서 제외됩니다.")
                 actually_excluded_count +=1
 
-        if self.excluded_materials: # 제외 목록이 있었을 경우, 실제로 몇 개가 필터링 되었는지 추가 정보 제공
+        if self.excluded_materials:
              print(f"확인: 전달된 제외 목록에 따라 총 {actually_excluded_count}개의 재질 폴더가 _build_image_pairs에서 필터링(제외)되었습니다.")
 
         excluded_numbers_suffix = [f"_{i:05d}" for i in range(0, 16)]
 
-        for material_folder_path in material_folders_to_use: # 필터링된 폴더만 사용
-            # ... (기존 input_files, output_folder, condition_folders, heightmaps_folder 찾는 로직은 동일) ...
-            # 이하는 기존 _build_image_pairs 로직과 거의 동일하게 유지, material_folder_path만 필터링된 것을 사용
+        for material_folder_path in material_folders_to_use:
             input_files = glob.glob(os.path.join(material_folder_path, 'input_*.png')) + \
                           glob.glob(os.path.join(material_folder_path, 'input_*.jpg'))
 
@@ -119,7 +112,6 @@ class GelSightDataset(Dataset):
             input_image_pil = Image.open(input_path).convert("L")
             output_image_pil = Image.open(output_path).convert("L")
 
-            # --- 1. 이미지 리사이즈 (잘라내기 전처리, 원본 비율 유지) ---
             crop_h, crop_w = self.center_crop_size
             orig_w, orig_h = input_image_pil.size
 
@@ -134,29 +126,23 @@ class GelSightDataset(Dataset):
                 input_image_pil = TF.resize(input_image_pil, (new_intermediate_h, new_intermediate_w), antialias=True)
                 output_image_pil = TF.resize(output_image_pil, (new_intermediate_h, new_intermediate_w), antialias=True)
 
-            # --- 2. 중앙 256x256 잘라내기 ---
             input_image_pil = TF.center_crop(input_image_pil, self.center_crop_size)
             output_image_pil = TF.center_crop(output_image_pil, self.center_crop_size)
             
-            # --- 3. 데이터 증강 (잘라낸 256x256 이미지에 적용) ---
             if self.augment:
-                # 3a. 랜덤 좌우 반전 (50% 확률)
                 if random.random() > 0.5:
                     input_image_pil = TF.hflip(input_image_pil)
                     output_image_pil = TF.hflip(output_image_pil)
                 
-                # 3b. 랜덤 상하 반전 (50% 확률)
                 if random.random() > 0.5:
                     input_image_pil = TF.vflip(input_image_pil)
                     output_image_pil = TF.vflip(output_image_pil)
 
-                # 3c. 랜덤 4방향 회전 (0, 90, 180, 270도)
                 angle = random.choice([0, 90, 180, 270])
-                if angle != 0: # 0도 회전은 불필요
-                    input_image_pil = TF.rotate(input_image_pil, angle, interpolation=TF.InterpolationMode.NEAREST) # 하이트맵이므로 BILINEAR보다 NEAREST가 적합할 수 있음
+                if angle != 0:
+                    input_image_pil = TF.rotate(input_image_pil, angle, interpolation=TF.InterpolationMode.NEAREST)
                     output_image_pil = TF.rotate(output_image_pil, angle, interpolation=TF.InterpolationMode.NEAREST)
 
-            # --- 4. 최종 변환 (채널 확장, 텐서 변환, 정규화, target_size로 리사이즈) ---
             input_image_rgb_from_gray = input_image_pil.convert("RGB")
             input_tensor = self.transform_input_pil_to_tensor(input_image_rgb_from_gray)
 

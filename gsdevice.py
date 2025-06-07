@@ -37,8 +37,7 @@ if os.name == 'nt':
         from pygrabber.dshow_graph import FilterGraph
         graph = FilterGraph()
 
-        # get the device name
-        allcams = graph.get_input_devices() # list of camera device
+        allcams = graph.get_input_devices()
         description = ""
         for cam in allcams:
             if camera_name in cam:
@@ -55,29 +54,24 @@ if os.name == 'nt':
 
 
 def resize_crop_mini(img, imgw, imgh):
-    # remove 1/7th of border from each size
     border_size_x, border_size_y = int(img.shape[0] * (1 / 7)), int(np.floor(img.shape[1] * (1 / 7)))
-    # keep the ratio the same as the original image size
     img = img[border_size_x+2:img.shape[0] - border_size_x, border_size_y:img.shape[1] - border_size_y]
-    # final resize for 3d
     img = cv2.resize(img, (imgw, imgh))
     return img
 
 
 class Camera:
     def __init__(self, dev_type):
-        # variable to store data
         self.data = None
         self.name = dev_type
         self.dev_id = get_camera_id(dev_type)
-        self.imgw = 320 # this is for R1, R1.5 is 240
-        self.imgh = 240 # this is for R1, R1.5 is 320
+        self.imgw = 320
+        self.imgh = 240
         self.cam = None
         self.while_condition = 1
 
     def connect(self):
 
-        # The camera in Mini is a USB camera and uses open cv to get the video data from the streamed video
         self.cam = cv2.VideoCapture(self.dev_id)
         if self.cam is None or not self.cam.isOpened():
             print('Warning: unable to open video source: ', self.dev_id)
@@ -87,7 +81,7 @@ class Camera:
         return self.cam
 
     def get_raw_image(self):
-        for i in range(10): ## flush out fist 100 frames to remove black frames
+        for i in range(10):
             ret, f0 = self.cam.read()
         ret, f0 = self.cam.read()
         if ret:
@@ -114,7 +108,6 @@ class Camera:
          cv2.imwrite(fname, self.data)
 
     def start_video(self):
-        # the default while condition is set to 1, change it for R1.5
         while( self.while_condition ):
             frame = self.get_image()
             cv2.imshow('frame', frame)

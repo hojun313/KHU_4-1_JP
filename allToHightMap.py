@@ -13,7 +13,6 @@ class MockGelSightDevice:
         self.imgw = width
 
 def process_video(video_path, specific_output_dir, mmpp, net_path, gpu_mode, mask_markers, frame_height, frame_width):
-    """하나의 영상 파일을 처리하여 이미지 시퀀스와 하이트 맵을 저장하는 함수"""
     print(f"\n--- {video_path} 처리 시작 ---")
     cap = cv2.VideoCapture(video_path)
 
@@ -68,13 +67,11 @@ def process_video(video_path, specific_output_dir, mmpp, net_path, gpu_mode, mas
 
             f1_cropped = f1[int(roi[1]):int(roi[1] + roi[3]), int(roi[0]):int(roi[0] + roi[2])]
 
-            # --- 검은 점 마스크 생성 ---
             lower_black = np.array([0, 0, 0])
             upper_black = np.array([50, 50, 50])
             mask = cv2.inRange(f1_cropped, lower_black, upper_black)
             mask = cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=2)
 
-            # --- Inpainting 적용 ---
             inpainted_frame = cv2.inpaint(f1_cropped, mask, inpaintRadius=5, flags=cv2.INPAINT_TELEA)
 
             output_image_path = os.path.join(output_image_dir, f'frame_{frame_count:05d}.png')
